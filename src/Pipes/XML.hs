@@ -141,8 +141,8 @@ runCPipe (CPipe f) = runContT f return
 pipe :: Functor m => Pipe a b m x -> CPipe a b m x
 pipe = CPipe . lift
 
-insideTagC :: MonadIO m =>  ByteString -> CPipe E a m Attrs
-insideTagC b = CPipe $ ContT $ insideTag b
+tag :: MonadIO m =>  ByteString -> CPipe E a m Attrs
+tag b = CPipe $ ContT $ insideTag b
 
 instance (Functor m, Semigroup x) => Semigroup (CPipe a b m x) where
     CPipe (ContT f) <> CPipe (ContT g) = CPipe $ ContT $ \c -> (<>) <$> f c <*> g c 
@@ -174,13 +174,13 @@ foldUntilP f g = go mempty
 {-
 getVMs :: forall m . MonadIO m => Pipe E OVM m ()
 getVMs  = runCPipe $ do 
-        insideTagC "VmRestorePoints"  -- inside first VmRestorePointTag consume EVERYTHING
-        insideTagC "VmRestorePoint" 
+        tag "VmRestorePoints"  -- inside first VmRestorePointTag consume EVERYTHING
+        tag "VmRestorePoint" 
         pipe $ yield RP 
         mappend -- compose consumers
             do
-                insideTagC "Links"
-                m <- insideTagC "Link" 
+                tag "Links"
+                m <- tag "Link" 
                 let mr =  do 
                         "BackupFileReference" <- m ^? ix "Type"
                         m ^? ix "Name" 
@@ -189,6 +189,6 @@ getVMs  = runCPipe $ do
                     Just x -> pipe $ yield (RPT $ isLTFile x)
                 pipe $ forever await -- DON'T forget to consume all stream
             do
-                insideTagC "HierarchyObjRef"
+                tag "HierarchyObjRef"
                 pipe $ getText (parseVM . toS) //> yield . VM 
 -}
