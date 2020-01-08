@@ -98,7 +98,15 @@ getAttrs = go mempty
             TinC _        -> pure m
             x -> panic $ "unterminated node attrs: " <>  show x
 
-type Inside m a = Attrs -> Pipe E a m ()
+data Repeat = Repeat | Stop 
+
+instance Semigroup Repeat where 
+    Repeat <> Repeat = Repeat
+    _ <> _ = Stop
+instance Monoid Repeat where
+    mempty = Repeat
+
+type Inside m a = Attrs -> Pipe E a m Repeat
 -- | euler scanner, suspend after a tag opening named as the first argument
 -- the second argument is a Pipe to receive the tag internal tokens
 -- TODO check out relative depth is 0 before decide the Tout is correct for bail out
@@ -106,7 +114,7 @@ insideTag
     :: (MonadIO m, Functor m)
     => ByteString
     -> Inside m a
-    -> Pipe E a m ()
+    -> Pipe E a m Repeat
 insideTag t inside = do
     x <- await
     case x of
@@ -114,14 +122,17 @@ insideTag t inside = do
             True -> do
                 m <- getAttrs
                 (>->)
-                    do void $ breakP (\e -> e ^? _Tout == Just c) 
-                    do forever $ inside m -- >> forever await
+                    do breakP (\e -> e ^? _Tout == Just c) >> pure Repeat
+                    do  let r Repeat = inside m >>= r 
+                            r Stop = forever await
+                        inside m >>= r
+                        
             False -> insideTag t inside
         _ -> insideTag t inside
 
-newtype CPipe a b m x = CPipe (ContT () (Pipe a b m) x) deriving (Monad, Applicative, Functor)
+newtype CPipe a b m x = CPipe (ContT Repeat (Pipe a b m) x) deriving (Monad, Applicative, Functor)
 
-runCPipe :: Functor m => CPipe a b m () -> Pipe a b m ()
+runCPipe :: Functor m => CPipe a b m Repeat -> Pipe a b m Repeat
 runCPipe (CPipe f) = runContT f return
 
 liftCP :: Functor m => Pipe a b m x -> CPipe a b m x
@@ -160,11 +171,11 @@ foldUntilP f g = go mempty
 {-
 getVMs :: forall m . MonadIO m => Pipe E OVM m ()
 getVMs  = runCPipe $ do 
-        insideTagC "VmRestorePoints" 
-        insideTagC "VmRestorePoint"
-        mappend
+        insideTagC "VmRestorePoints"  -- inside first VmRestorePointTag consume EVERYTHING
+        insideTagC "VmRestorePoint" 
+        liftCP $ yield RP 
+        mappend -- compose consumers
             do
-                liftCP $ yield RP 
                 insideTagC "Links"
                 m <- insideTagC "Link" 
                 let mr =  do 
@@ -173,8 +184,8 @@ getVMs  = runCPipe $ do
                 case mr of 
                     Nothing -> pure () 
                     Just x -> liftCP $ yield (RPT $ isLTFile x)
-                liftCP $ forever await
+                liftCP $ forever await -- DON'T forget to consume all stream
             do
                 insideTagC "HierarchyObjRef"
-                liftCP $ getText (parseVM . toS) //> yield . VM
+                liftCP $ getText (parseVM . toS) //> yield . VM 
 -}
