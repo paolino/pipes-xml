@@ -45,10 +45,10 @@ data Token
 
 makePrisms ''Token
 
-produceE :: Functor m 
+produceTokens :: Functor m 
     => ByteString -- ^ xml, strict because we use Xeno as tokenizer
     -> Producer Token m ()
-produceE = process
+produceTokens = process
     do yield . Tin
     do \n v -> yield $ Tattr n v
     do yield . TinC
@@ -91,7 +91,7 @@ instance Monoid Loop where
 -- the second argument is a Pipe to receive the tag internal tokens
 -- TODO check out relative depth is 0 before decide the Tout is correct for bail out
 insideTag
-    :: (MonadIO m, Functor m)
+    :: Functor m
     => ByteString
     -> (Attrs -> Pipe Token a m Loop)
     -> Pipe Token a m Loop
@@ -137,11 +137,11 @@ takeP :: Functor m => Int -> CPipe a b m Loop -> CPipe a b m Loop
 takeP n = fold . replicate n
 
 -- | consume next tag matching
-tag :: MonadIO m =>  ByteString -> CPipe Token a m Attrs
+tag :: Functor m =>  ByteString -> CPipe Token a m Attrs
 tag b = CPipe $ ContT $ \m -> insideTag b m >> pure Stop
 
 -- | consume all tags matching
-tags :: MonadIO m =>  ByteString -> CPipe Token a m Attrs
+tags :: Functor m =>  ByteString -> CPipe Token a m Attrs
 tags b = CPipe $ ContT $ \m -> insideTag b m >> pure Loop
 
 instance (Functor m, Semigroup x) => Semigroup (CPipe a b m x) where
