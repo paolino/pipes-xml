@@ -98,15 +98,15 @@ getAttrs = go mempty
             TinC _        -> pure m
             x -> panic $ "unterminated node attrs: " <>  show x
 
-data Repeat = Repeat | Stop 
+data Loop = Loop | Stop 
 
-instance Semigroup Repeat where 
-    Repeat <> Repeat = Repeat
+instance Semigroup Loop where 
+    Loop <> Loop = Loop
     _ <> _ = Stop
-instance Monoid Repeat where
-    mempty = Repeat
+instance Monoid Loop where
+    mempty = Loop
 
-type Inside m a = Attrs -> Pipe E a m Repeat
+type Inside m a = Attrs -> Pipe E a m Loop
 -- | euler scanner, suspend after a tag opening named as the first argument
 -- the second argument is a Pipe to receive the tag internal tokens
 -- TODO check out relative depth is 0 before decide the Tout is correct for bail out
@@ -114,7 +114,7 @@ insideTag
     :: (MonadIO m, Functor m)
     => ByteString
     -> Inside m a
-    -> Pipe E a m Repeat
+    -> Pipe E a m Loop
 insideTag t inside = do
     x <- await
     case x of
@@ -122,27 +122,40 @@ insideTag t inside = do
             True -> do
                 m <- getAttrs
                 (>->)
-                    do breakP (\e -> e ^? _Tout == Just c) >> pure Repeat
-                    do  let r Repeat = inside m >>= r 
-                            r Stop = forever await
-                        inside m >>= r
+                    do  breakP (\e -> e ^? _Tout == Just c) >> pure mempty
+                    do  let r Loop   = inside m >>= r 
+                            r Stop   = forever await
+                        r Loop
                         
             False -> insideTag t inside
         _ -> insideTag t inside
 
-newtype CPipe a b m x = CPipe (ContT Repeat (Pipe a b m) x) deriving (Monad, Applicative, Functor, MonadCont )
+newtype CPipe a b m x = CPipe (ContT Loop (Pipe a b m) x) deriving (Monad, Applicative, Functor, MonadCont )
 
 instance MonadTrans (CPipe a b ) where
     lift = pipe . lift 
 
-runCPipe :: Functor m => CPipe a b m Repeat -> Pipe a b m Repeat
+runCPipe :: Functor m => CPipe a b m Loop -> Pipe a b m Loop
 runCPipe (CPipe f) = runContT f return
 
+-- | promote a pipe operation
 pipe :: Functor m => Pipe a b m x -> CPipe a b m x
 pipe = CPipe . lift
 
+stop :: Functor m => CPipe a b m Loop
+stop = pure Stop
+
+loop :: Functor m => CPipe a b m Loop
+loop = mempty
+
+takeP :: Functor m => Int -> CPipe a b m Loop -> CPipe a b m Loop
+takeP n = fold . replicate n
+-- | operate over a tag
 tag :: MonadIO m =>  ByteString -> CPipe E a m Attrs
-tag b = CPipe $ ContT $ insideTag b
+tag b = CPipe $ ContT $ \m -> insideTag b m >> pure Stop
+
+tags :: MonadIO m =>  ByteString -> CPipe E a m Attrs
+tags b = CPipe $ ContT $ \m -> insideTag b m >> pure Loop
 
 instance (Functor m, Semigroup x) => Semigroup (CPipe a b m x) where
     CPipe (ContT f) <> CPipe (ContT g) = CPipe $ ContT $ \c -> (<>) <$> f c <*> g c 
