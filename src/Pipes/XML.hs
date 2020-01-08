@@ -130,13 +130,16 @@ insideTag t inside = do
             False -> insideTag t inside
         _ -> insideTag t inside
 
-newtype CPipe a b m x = CPipe (ContT Repeat (Pipe a b m) x) deriving (Monad, Applicative, Functor)
+newtype CPipe a b m x = CPipe (ContT Repeat (Pipe a b m) x) deriving (Monad, Applicative, Functor, MonadCont )
+
+instance MonadTrans (CPipe a b ) where
+    lift = pipe . lift 
 
 runCPipe :: Functor m => CPipe a b m Repeat -> Pipe a b m Repeat
 runCPipe (CPipe f) = runContT f return
 
-liftCP :: Functor m => Pipe a b m x -> CPipe a b m x
-liftCP = CPipe . lift
+pipe :: Functor m => Pipe a b m x -> CPipe a b m x
+pipe = CPipe . lift
 
 insideTagC :: MonadIO m =>  ByteString -> CPipe E a m Attrs
 insideTagC b = CPipe $ ContT $ insideTag b
@@ -173,7 +176,7 @@ getVMs :: forall m . MonadIO m => Pipe E OVM m ()
 getVMs  = runCPipe $ do 
         insideTagC "VmRestorePoints"  -- inside first VmRestorePointTag consume EVERYTHING
         insideTagC "VmRestorePoint" 
-        liftCP $ yield RP 
+        pipe $ yield RP 
         mappend -- compose consumers
             do
                 insideTagC "Links"
@@ -183,9 +186,9 @@ getVMs  = runCPipe $ do
                         m ^? ix "Name" 
                 case mr of 
                     Nothing -> pure () 
-                    Just x -> liftCP $ yield (RPT $ isLTFile x)
-                liftCP $ forever await -- DON'T forget to consume all stream
+                    Just x -> pipe $ yield (RPT $ isLTFile x)
+                pipe $ forever await -- DON'T forget to consume all stream
             do
                 insideTagC "HierarchyObjRef"
-                liftCP $ getText (parseVM . toS) //> yield . VM 
+                pipe $ getText (parseVM . toS) //> yield . VM 
 -}
