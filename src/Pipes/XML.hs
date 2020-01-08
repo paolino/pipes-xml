@@ -126,7 +126,7 @@ newtype CPipe a b m x = CPipe (ContT () (Pipe a b m) x) deriving (Monad, Applica
 runCPipe :: Functor m => CPipe a b m () -> Pipe a b m ()
 runCPipe (CPipe f) = runContT f return
 
-liftCP :: Pipe a b m x -> CPipe a b m x
+liftCP :: Functor m => Pipe a b m x -> CPipe a b m x
 liftCP = CPipe . lift
 
 findTagC :: MonadIO m =>  ByteString -> CPipe E a m Attrs
