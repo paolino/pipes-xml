@@ -102,12 +102,12 @@ type Inside m a = Attrs -> Pipe E a m ()
 -- | euler scanner, suspend after a tag opening named as the first argument
 -- the second argument is a Pipe to receive the tag internal tokens
 -- TODO check out relative depth is 0 before decide the Tout is correct for bail out
-findTag
+insideTag
     :: (MonadIO m, Functor m)
     => ByteString
     -> Inside m a
     -> Pipe E a m ()
-findTag t inside = do
+insideTag t inside = do
     x <- await
     case x of
         Tin c -> case c == t of
@@ -116,10 +116,8 @@ findTag t inside = do
                 (>->)
                     do void $ breakP (\e -> e ^? _Tout == Just c) 
                     do forever $ inside m -- >> forever await
-            False -> findTag t inside
-        _ -> findTag t inside
-
-findTag_ t inside = findTag t $ const inside
+            False -> insideTag t inside
+        _ -> insideTag t inside
 
 newtype CPipe a b m x = CPipe (ContT () (Pipe a b m) x) deriving (Monad, Applicative, Functor)
 
@@ -129,8 +127,8 @@ runCPipe (CPipe f) = runContT f return
 liftCP :: Functor m => Pipe a b m x -> CPipe a b m x
 liftCP = CPipe . lift
 
-findTagC :: MonadIO m =>  ByteString -> CPipe E a m Attrs
-findTagC b = CPipe $ ContT $ findTag b
+insideTagC :: MonadIO m =>  ByteString -> CPipe E a m Attrs
+insideTagC b = CPipe $ ContT $ insideTag b
 
 instance (Functor m, Semigroup x) => Semigroup (CPipe a b m x) where
     CPipe (ContT f) <> CPipe (ContT g) = CPipe $ ContT $ \c -> (<>) <$> f c <*> g c 
@@ -162,13 +160,13 @@ foldUntilP f g = go mempty
 {-
 getVMs :: forall m . MonadIO m => Pipe E OVM m ()
 getVMs  = runCPipe $ do 
-        findTagC "VmRestorePoints" 
-        findTagC "VmRestorePoint"
+        insideTagC "VmRestorePoints" 
+        insideTagC "VmRestorePoint"
         mappend
             do
                 liftCP $ yield RP 
-                findTagC "Links"
-                m <- findTagC "Link" 
+                insideTagC "Links"
+                m <- insideTagC "Link" 
                 let mr =  do 
                         "BackupFileReference" <- m ^? ix "Type"
                         m ^? ix "Name" 
@@ -177,6 +175,6 @@ getVMs  = runCPipe $ do
                     Just x -> liftCP $ yield (RPT $ isLTFile x)
                 liftCP $ forever await
             do
-                findTagC "HierarchyObjRef"
+                insideTagC "HierarchyObjRef"
                 liftCP $ getText (parseVM . toS) //> yield . VM
 -}
