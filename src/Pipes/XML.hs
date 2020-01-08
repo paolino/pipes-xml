@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Arrows                    #-}
 {-# LANGUAGE BlockArguments            #-}
 {-# LANGUAGE DataKinds                 #-}
@@ -22,6 +23,7 @@ import           Control.Lens            hiding ( deep
                                                 , none
                                                 )
 import           Control.Lens.Extras
+import Control.Monad.Cont
 import qualified Data.ByteString.Lazy          as BL
 import qualified Data.ByteString               as B
 import           Data.Map                       ( Map )
@@ -113,11 +115,28 @@ findTag t inside = do
                 m <- getAttrs
                 (>->)
                     do void $ breakP (\e -> e ^? _Tout == Just c) 
-                    do inside m >> forever await
+                    do forever $ inside m -- >> forever await
             False -> findTag t inside
         _ -> findTag t inside
 
 findTag_ t inside = findTag t $ const inside
+
+newtype CPipe a b m x = CPipe (ContT () (Pipe a b m) x) deriving (Monad, Applicative, Functor)
+
+runCPipe :: Functor m => CPipe a b m () -> Pipe a b m ()
+runCPipe (CPipe f) = runContT f return
+
+liftCP :: Pipe a b m x -> CPipe a b m x
+liftCP = CPipe . lift
+
+findTagC :: MonadIO m =>  ByteString -> CPipe E a m Attrs
+findTagC b = CPipe $ ContT $ findTag b
+
+instance (Functor m, Semigroup x) => Semigroup (CPipe a b m x) where
+    CPipe (ContT f) <> CPipe (ContT g) = CPipe $ ContT $ \c -> (<>) <$> f c <*> g c 
+
+instance (Functor m, Monoid x) => Monoid (CPipe a b m x) where
+    mempty = pure mempty
 
 getText :: Functor m => (ByteString -> Maybe a) -> Pipe E a m ()
 getText f = do
@@ -130,7 +149,6 @@ getText f = do
             getText f
         _ -> getText f
 
-
 foldUntilP
     :: Functor m => Monoid a => (b -> Bool) -> (b -> a) -> Pipe b (b, a) m ()
 foldUntilP f g = go mempty
@@ -140,3 +158,25 @@ foldUntilP f g = go mempty
         case f x of
             False -> yield (x, y)
             True  -> go $ y <> g x
+
+{-
+getVMs :: forall m . MonadIO m => Pipe E OVM m ()
+getVMs  = runCPipe $ do 
+        findTagC "VmRestorePoints" 
+        findTagC "VmRestorePoint"
+        mappend
+            do
+                liftCP $ yield RP 
+                findTagC "Links"
+                m <- findTagC "Link" 
+                let mr =  do 
+                        "BackupFileReference" <- m ^? ix "Type"
+                        m ^? ix "Name" 
+                case mr of 
+                    Nothing -> pure () 
+                    Just x -> liftCP $ yield (RPT $ isLTFile x)
+                liftCP $ forever await
+            do
+                findTagC "HierarchyObjRef"
+                liftCP $ getText (parseVM . toS) //> yield . VM
+-}
