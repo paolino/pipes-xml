@@ -1,0 +1,4 @@
+.stack-work/
+pipes-xml.cabal
+*~
+stack.yaml.lock
