@@ -82,9 +82,10 @@ breakP f = do
     if f x then pure x else yield x >> breakP f
 
 
-
+-- | node attributes
 type Attrs = Map ByteString ByteString
 
+-- consume all attrs of a node
 getAttrs :: Functor m => Pipe E a m Attrs
 getAttrs = go mempty
   where
@@ -92,25 +93,31 @@ getAttrs = go mempty
         x <- await
         case x of
             Tattr k v -> go (M.insert k v $ m)
-            _         -> pure m
+            TinC _        -> pure m
+            x -> panic $ "unterminated node attrs: " <>  show x
 
+type Inside m a = Attrs -> Pipe E a m ()
+-- | euler scanner, suspend after a tag opening named as the first argument
+-- the second argument is a Pipe to receive the tag internal tokens
+-- TODO check out relative depth is 0 before decide the Tout is correct for bail out
 findTag
     :: (MonadIO m, Functor m)
     => ByteString
-    -> Pipe E a m (Attrs, Pipe E a m () -> Pipe E a m ())
-findTag t = do
+    -> Inside m a
+    -> Pipe E a m ()
+findTag t inside = do
     x <- await
     case x of
         Tin c -> case c == t of
             True -> do
                 m <- getAttrs
-                pure
-                    ( m
-                    , \p -> (breakP (\e -> e ^? _Tout == Just c) >-> forever p)
-                        >> void await
-                    )
-            False -> findTag t
-        _ -> findTag t
+                (>->)
+                    do void $ breakP (\e -> e ^? _Tout == Just c) 
+                    do inside m >> forever await
+            False -> findTag t inside
+        _ -> findTag t inside
+
+findTag_ t inside = findTag t $ const inside
 
 getText :: Functor m => (ByteString -> Maybe a) -> Pipe E a m ()
 getText f = do
