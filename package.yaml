@@ -32,6 +32,12 @@ dependencies:
 - pipes-text
 - text
 
+- tasty-golden
+- tasty
+- filepath
+- Glob
+- pretty-simple
+
 library:
   source-dirs: src
 
@@ -45,3 +51,4 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - pipes-xml
+
