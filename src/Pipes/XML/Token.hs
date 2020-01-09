@@ -29,7 +29,6 @@ import           Protolude
 import           Pipes
 import           Pipes.Core
 import           Pipes.Safe              hiding ( handle )
-import qualified Pipes.Text as PB
 import qualified Pipes.Prelude as P
 import Data.Attoparsec.ByteString.Char8
 import qualified Data.Text as T

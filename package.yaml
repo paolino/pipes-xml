@@ -29,7 +29,6 @@ dependencies:
 - bytestring
 - pipes-safe
 - attoparsec
-- pipes-text
 - text
 
 - tasty-golden
