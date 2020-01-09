@@ -27,34 +27,12 @@ import Control.Monad.Cont
 import qualified Data.ByteString.Lazy          as BL
 import qualified Data.ByteString               as B
 import           Data.Map                       ( Map, insert )
-import           Protolude              
+import           Protolude               
 import           Pipes
 import           Pipes.Core
 import           Pipes.Safe              hiding ( handle )
-import  Xeno.SAX                      (process)
 
--- | xml tokens
-data Token 
-    = Tin ByteString -- ^ tag starts
-    | TinC ByteString -- ^  end of attribute list
-    | Tattr ByteString ByteString -- ^ an atttribute
-    | Tout ByteString -- ^ tag ends
-    | Ttext ByteString -- ^ some text
-    | Tcdata ByteString -- ^ some CDATA
-    deriving Show
-
-makePrisms ''Token
-
-produceTokens :: Functor m 
-    => ByteString -- ^ xml, strict because we use Xeno as tokenizer
-    -> Producer Token m ()
-produceTokens = process
-    do yield . Tin
-    do \n v -> yield $ Tattr n v
-    do yield . TinC
-    do yield . Ttext
-    do yield . Tout
-    do yield . Tcdata
+import Pipes.XML.Token
 
 
 -- | a pipe which breaks, and return the breaking token
@@ -64,7 +42,7 @@ breakP f = do
     if f x then pure x else yield x >> breakP f
 
 -- | node attributes
-type Attrs = Map ByteString ByteString
+type Attrs = Map Text ByteString
 
 -- | consume all attrs of a node
 getAttrs :: Functor m => Pipe Token a m Attrs
@@ -92,7 +70,7 @@ instance Monoid Loop where
 -- TODO check out relative depth is 0 before decide the Tout is correct for bail out
 insideTag
     :: Functor m
-    => ByteString
+    => Text
     -> (Attrs -> Pipe Token a m Loop)
     -> Pipe Token a m Loop
 insideTag t inside = do
@@ -137,11 +115,11 @@ takeP :: Functor m => Int -> CPipe a b m Loop -> CPipe a b m Loop
 takeP n = fold . replicate n
 
 -- | consume next tag matching
-tag :: Functor m =>  ByteString -> CPipe Token a m Attrs
+tag :: Functor m =>  Text -> CPipe Token a m Attrs
 tag b = CPipe $ ContT $ \m -> insideTag b m >> pure Stop
 
 -- | consume all tags matching
-tags :: Functor m =>  ByteString -> CPipe Token a m Attrs
+tags :: Functor m =>  Text -> CPipe Token a m Attrs
 tags b = CPipe $ ContT $ \m -> insideTag b m >> pure Loop
 
 instance (Functor m, Semigroup x) => Semigroup (CPipe a b m x) where
@@ -159,9 +137,10 @@ getText f = do
     t <- await
     case t of
         Ttext c -> p c 
-        Tcdata c -> p c 
+        -- Tcdata c -> p c 
         _ -> getText f
     
-
+produceTokens :: Functor m => Pipe ByteString Token m ()
+produceTokens = chunking Outside parseToken
 
 
