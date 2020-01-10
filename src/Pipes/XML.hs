@@ -94,8 +94,8 @@ newtype CPipe a b m x = CPipe (ContT Loop (Pipe a b m) x)
     deriving ( Monad, Applicative, Functor, MonadCont )
 
 -- | interpret the resulting pipe
-unPipe :: Functor m => CPipe a b m Loop -> Pipe a b m Loop
-unPipe (CPipe f) = runContT f return
+renderPipe :: Functor m => CPipe a b m Loop -> Pipe a b m Loop
+renderPipe (CPipe f) = runContT f return
 
 -- | promote a pipe operation
 pipe :: Functor m => Pipe a b m x -> CPipe a b m x
