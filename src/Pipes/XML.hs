@@ -16,7 +16,7 @@
 {-# LANGUAGE TupleSections             #-}
 {-# LANGUAGE TypeFamilies              #-}
 
-module Pipes.XML where
+module Pipes.XML where 
 
 import           Control.Arrow                  ( (***) )
 import           Control.Lens            hiding ( deep
@@ -34,11 +34,11 @@ import           Pipes.Safe              hiding ( handle )
 
 import Pipes.XML.Token
 
-
 -- | a pipe which breaks, and return the breaking token
+--
 breakP :: Functor m => (a -> Bool) -> Pipe a a m a
 breakP f = do
-    x <- await
+    x <- await 
     if f x then pure x else yield x >> breakP f
 
 -- | node attributes
@@ -46,7 +46,7 @@ type Attrs = Map Text ByteString
 
 -- | consume all attrs of a node
 getAttrs :: Functor m => Pipe Token a m Attrs
-getAttrs = go mempty
+getAttrs = go mempty 
   where
     go m = do
         x <- await
@@ -58,7 +58,7 @@ getAttrs = go mempty
 -- | condition of pipe repetition
 data Loop = Loop | Stop 
 
-instance Semigroup Loop where 
+instance Semigroup Loop where  
     Loop <> Loop = Loop
     _ <> _ = Stop
 
@@ -88,8 +88,10 @@ insideTag t inside = do
             False -> insideTag t inside
         _ -> insideTag t inside
 
+
 -- | dsl to flatten the nested pipe structure reflecting xml structure
-newtype CPipe a b m x = CPipe (ContT Loop (Pipe a b m) x) deriving (Monad, Applicative, Functor, MonadCont )
+newtype CPipe a b m x = CPipe (ContT Loop (Pipe a b m) x)
+    deriving ( Monad, Applicative, Functor, MonadCont )
 
 -- | interpret the resulting pipe
 unPipe :: Functor m => CPipe a b m Loop -> Pipe a b m Loop
@@ -141,6 +143,6 @@ getText f = do
         _ -> getText f
     
 produceTokens :: Functor m => Pipe ByteString Token m ()
-produceTokens = chunking Outside parseToken
-
+produceTokens =  chunking Outside parseToken 
+ 
 

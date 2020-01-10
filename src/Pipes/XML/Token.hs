@@ -36,72 +36,72 @@ import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Char8 as B
 
 -- | xml tokens
-data Token 
-    = Tin Text -- ^ tag starts
-    | TinC Text -- ^  end of attribute list
-    | Tattr Text ByteString -- ^ an atttribute
-    | Tout Text -- ^ tag ends
-    | Ttext ByteString -- ^ some text
-    | Tcdata ByteString -- ^ some CDATA -- not implemented
+data Token = Tin Text -- ^ tag starts
+           | TinC Text -- ^  end of attribute list
+           | Tattr Text ByteString -- ^ an atttribute
+           | Tout Text -- ^ tag ends
+           | Ttext ByteString -- ^ some text
+           | Tcdata ByteString -- ^ some CDATA -- not implemented
     deriving Show
 
 makePrisms ''Token
 
-chunking :: (Show a, Show s, Functor m) => s -> (s -> Parser (s, [a]))  -> Pipe ByteString a m ()
-chunking s0 p = go (parse $ p s0) 
-    where 
-        go q = do 
-            let loop q b = case q b of 
-                    Done r (s, xs) -> do 
-                        traverse_ yield xs
-                        if not . B.null $ r 
-                                then loop (parse $ p s) r 
-                                else go $ parse $ p s
-                    f@(Partial _) -> go $ feed f
-                    x -> panic $ show x 
-            await >>= loop q
+chunking
+    :: (Show s, Show a, Functor m)
+    => s -- ^ initial parser state
+    -> (s -> Parser (s, [a])) -- ^ output stream item parse
+    -> Pipe ByteString a m ()
+chunking s0 p = go (parse $ p s0)
+  where
+    go q = do
+        let loop q b = case q b of
+                Done r (s, xs) -> do
+                    traverse_ yield xs
+                    if not . B.null $ r
+                        then loop (parse $ p s) r
+                        else go $ parse $ p s
+                f@(Partial _) -> go $ feed f
+                x             -> panic $ show x
+        await >>= loop q
 
 data StateP =  Outside  | Attring Text deriving Show
 
-parseToken :: StateP  -> Parser (StateP, [Token])
-
-parseToken Outside  = 
-    msum 
-        [ do
-            t <- parseString ('<')
-            guard $ B.length t > 0
-            '<' <- peekChar'
-            pure $ (Outside, pure $ Ttext t)
-        , do 
-            string "</"
-            name <- takeWhile1 ((/=) '>')
-            char '>'
-            pure (Outside, pure $ Tout $ T.strip $ toS name)
-        , do
-            () <$ char '<' <|> () <$ string "<?"
-            skipSpace
-            name <- T.strip . T.decodeUtf8 <$>  takeWhile1 (\x -> x /= ' ' && x /= '>')
-            pure (Attring name, pure $ Tin name )
-        ]
-
+parseToken :: StateP -> Parser ( StateP, [ Token ] )
+parseToken Outside = msum
+    [ do
+          t <- parseString ('<')
+          guard $ B.length t > 0
+          '<' <- peekChar'
+          pure $ ( Outside, pure $ Ttext t )
+    , do
+          string "</"
+          name <- takeWhile1 ((/=) '>')
+          char '>'
+          pure ( Outside, pure $ Tout $ T.strip $ toS name )
+    , do
+          () <$ char '<' <|> () <$ string "<?"
+          skipSpace
+          name <- T.strip . T.decodeUtf8 <$> takeWhile1
+              (\x -> x /= ' ' && x /= '>')
+          pure ( Attring name, pure $ Tin name )
+    ]
 parseToken (Attring name) = do
     skipSpace
-    msum 
-        [ do 
-            () <$ char '>' <|> () <$ string "?>" 
-            pure (Outside, pure $ TinC name)
-        , do 
-            () <$ string "/>" 
-            pure (Outside, [TinC name, Tout name])
-          
-            
-        , do 
-            attr <- takeWhile1 ((/=) '=')
-            char '='
-            skipSpace
-            value <- parseQuoted
-            pure (Attring name, pure $  Tattr (T.strip $ T.decodeUtf8 attr) value)
-        ]
+    msum [ do
+               () <$ char '>' <|> () <$ string "?>"
+               pure ( Outside, pure $ TinC name )
+         , do
+               () <$ string "/>"
+               pure ( Outside, [ TinC name, Tout name ] )
+         , do
+               attr <- takeWhile1 ((/=) '=')
+               char '='
+               skipSpace
+               value <- parseQuoted
+               pure ( Attring name
+                    , pure $ Tattr (T.strip $ T.decodeUtf8 attr) value
+                    )
+         ]
 
 escape :: Parser Char
 escape = char '\\' >> '"' <$ satisfy (== '"')
@@ -109,13 +109,12 @@ escape = char '\\' >> '"' <$ satisfy (== '"')
 amp :: Parser Char
 amp = do
     char '&'
-    x <- msum
-        [ '<' <$ string "lt"
-        , '>' <$ string "gt"
-        , '&' <$ string "amp"
-        , '"' <$ string "quot"
-        , '\'' <$ string "apos"
-        ]
+    x <- msum [ '<' <$ string "lt"
+              , '>' <$ string "gt"
+              , '&' <$ string "amp"
+              , '"' <$ string "quot"
+              , '\'' <$ string "apos"
+              ]
     char ';'
     pure x
 
