@@ -34,6 +34,7 @@ import Data.Attoparsec.ByteString.Char8
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Builder as B
 
 -- | xml tokens
 data Token = Tin Text -- ^ tag starts
@@ -42,6 +43,8 @@ data Token = Tin Text -- ^ tag starts
            | Tout Text -- ^ tag ends
            | Ttext ByteString -- ^ some text
            | Tcdata ByteString -- ^ some CDATA -- not implemented
+           | Tcomment Text
+           | Tdtd Text (Either ByteString [ByteString])
     deriving Show
 
 makePrisms ''Token
@@ -64,26 +67,59 @@ chunking s0 p = go (parse $ p s0)
                 x             -> panic $ show x
         await >>= loop q
 
-data StateP =  Outside  | Attring Text deriving Show
+data StateP =  Outside  | Attring Text | Elements Text deriving Show
+
+dtdElements :: Parser [ByteString]
+dtdElements = do
+    char '['
+    xs <- many dtdElement
+    skipSpace
+    char ']' 
+    pure xs
+
+dtdElement = do
+    skipSpace
+    string "<!"
+    skipSpace
+    parseString '>' <* char '>'
+
+-- ts = traceShow
 
 parseToken :: StateP -> Parser ( StateP, [ Token ] )
 parseToken Outside = msum
-    [ do
-          t <- parseString ('<')
-          guard $ B.length t > 0
-          '<' <- peekChar'
-          pure $ ( Outside, pure $ Ttext t )
-    , do
+    [  do
           string "</"
-          name <- takeWhile1 ((/=) '>')
-          char '>'
+          name <- parseString '>' <* char '>'
           pure ( Outside, pure $ Tout $ T.strip $ toS name )
+    , do
+          string "<!"
+          skipSpace
+          string "DOCTYPE"
+          skipSpace
+          n <- T.decodeUtf8 <$> parseString ' '
+          skipSpace
+          xs <- Right <$> dtdElements -- <|>  Left <$> parseQuoted
+          skipSpace 
+          char '>'
+          pure (Outside, pure $ Tdtd n xs)
+
+    , do
+          string "<!--"
+          skipSpace
+          c <- T.decodeUtf8 <$> parseStringS "-->" 
+          pure ( Outside, pure $ Tcomment c)
     , do
           () <$ char '<' <|> () <$ string "<?"
           skipSpace
           name <- T.strip . T.decodeUtf8 <$> takeWhile1
               (\x -> x /= ' ' && x /= '>')
           pure ( Attring name, pure $ Tin name )
+    , do
+          t <- parseString ('<')
+          guard $ B.length t > 0
+          '<' <- peekChar'
+          pure $ ( Outside, pure $ Ttext t )
+    
     ]
 parseToken (Attring name) = do
     skipSpace
@@ -121,8 +157,15 @@ amp = do
 character :: Char -> Parser Char
 character c = amp <|>  escape <|> satisfy (/= c)
 
+characterS :: ByteString -> Parser [Char]
+characterS c = pure <$> amp <|>  pure <$> escape <|>  mempty <$ string c
+
 parseString :: Char -> Parser ByteString
 parseString c = B.pack <$> many (character c)
+
+parseStringS :: ByteString -> Parser ByteString 
+parseStringS c = B.pack . concat <$> many (characterS c)
+
 
 parseQuoted :: Parser ByteString
 parseQuoted = do
