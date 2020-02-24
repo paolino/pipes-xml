@@ -13,7 +13,6 @@ import Test.Tasty.Golden.Advanced as G
 
 import Pipes.XML
 import Pipes.XML.Token
-import qualified Pipes.Prelude as P
 import Pipes
 import Pipes.Core
 import Text.Pretty.Simple
@@ -55,9 +54,13 @@ testPipe test name input = goldenTest testName
                 <> toS (T.replace " " "_" name) 
                 <> ".failed"
 
+testFile :: Show a => Text -> FilePath -> Pipe Token a IO () -> TestTree
 testFile n t f = testPipe f n $ "test/tests" </>  t
-testFiles n ts f =  map (\t -> testPipe f n t) ts
 
+testFiles :: (Functor f, Show a) => Text -> f FilePath -> Pipe Token a IO () -> f TestTree
+testFiles n ts f =  map (testPipe f n) ts
+
+onPlants :: Show a => Text -> Pipe Token a IO () -> TestTree
 onPlants n = testFile n "dsl/plant_catalog.xml"  
 
 

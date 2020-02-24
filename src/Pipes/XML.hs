@@ -1,19 +1,13 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE Arrows                    #-}
 {-# LANGUAGE BlockArguments            #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE DeriveFunctor             #-}
-{-# LANGUAGE DeriveGeneric             #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE LambdaCase                #-}
 {-# LANGUAGE NoImplicitPrelude         #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings         #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE StandaloneDeriving        #-}
-{-# LANGUAGE TemplateHaskell           #-}
-{-# LANGUAGE TupleSections             #-}
 {-# LANGUAGE TypeFamilies              #-}
 
 module Pipes.XML where 
@@ -51,7 +45,7 @@ getAttrs = go mempty
     go m = do
         x <- await
         case x of
-            Tattr k v -> go $ insert k v $ m
+            Tattr k v -> go $ insert k v m
             TinC _    -> pure m
             x         -> panic $ "unterminated node attrs: " <> show x
 
@@ -76,8 +70,8 @@ insideTag
 insideTag t inside = do
     x <- await
     case x of
-        Tin c -> case c == t of
-            True -> do
+        Tin c -> if c == t
+            then  do
                 m <- getAttrs
                 (>->)
                     do  breakP (\x -> x ^? _Tout == Just c) >> pure mempty
@@ -85,7 +79,7 @@ insideTag t inside = do
                             r Stop   = forever await
                         r Loop
                         
-            False -> insideTag t inside
+            else insideTag t inside
         _ -> insideTag t inside
 
 

@@ -1,40 +1,39 @@
+{-# LANGUAGE Arrows                     #-}
+{-# LANGUAGE BlockArguments             #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE Arrows                    #-}
-{-# LANGUAGE BlockArguments            #-}
-{-# LANGUAGE DataKinds                 #-}
-{-# LANGUAGE DeriveFunctor             #-}
-{-# LANGUAGE DeriveGeneric             #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE LambdaCase                #-}
-{-# LANGUAGE NoImplicitPrelude         #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE OverloadedStrings         #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE StandaloneDeriving        #-}
-{-# LANGUAGE TemplateHaskell           #-}
-{-# LANGUAGE TupleSections             #-}
-{-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE NoMonomorphismRestriction  #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeFamilies               #-}
 
 module Pipes.XML.Token where
 
-import           Control.Arrow                  ( (***) )
-import           Control.Lens            hiding ( deep
-                                                , none
-                                                )
+import           Control.Arrow                    ((***))
+import           Control.Lens                     hiding (deep, none)
 import           Control.Lens.Extras
-import Control.Monad.Cont
-import           Data.Map                       ( Map, insert )
-import           Protolude              
+import           Control.Monad.Cont
+import           Data.Attoparsec.ByteString.Char8
+import qualified Data.ByteString.Builder          as B
+import qualified Data.ByteString.Char8            as B
+import           Data.Map                         (Map, insert)
+import qualified Data.Text                        as T
+import qualified Data.Text.Encoding               as T
 import           Pipes
 import           Pipes.Core
-import           Pipes.Safe              hiding ( handle )
-import qualified Pipes.Prelude as P
-import Data.Attoparsec.ByteString.Char8
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
-import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Builder as B
+import qualified Pipes.Prelude                    as P
+import           Pipes.Safe                       hiding (handle)
+import           Protolude
+
 
 -- | xml tokens
 data Token = Tin Text -- ^ tag starts
@@ -78,6 +77,7 @@ dtdElements = do
     char ']' 
     pure xs
 
+dtdElement :: Parser ByteString 
 dtdElement = do
     skipSpace
     string "<!"
@@ -126,10 +126,10 @@ parseToken Outside = msum
               1 -> pure ( Outside, [Tin name, TinC name] )
               2 -> pure ( Outside, [Tin name, TinC name, Tout name])
     , do
-          t <- parseString ('<')
+          t <- parseString '<'
           guard $ B.length t > 0
           '<' <- peekChar'
-          pure $ ( Outside, pure $ Ttext t )
+          pure (Outside, pure $ Ttext t)
     
     ]
 parseToken (Attring name) = do
@@ -141,7 +141,7 @@ parseToken (Attring name) = do
                () <$ string "/>"
                pure ( Outside, [ TinC name, Tout name ] )
          , do
-               attr <- takeWhile1 ((/=) '=')
+               attr <- takeWhile1 ('=' /=)
                char '='
                skipSpace
                value <- parseQuoted
