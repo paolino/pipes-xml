@@ -2,3 +2,5 @@
 pipes-xml.cabal
 *~
 stack.yaml.lock
+test/tests/**/*.failed
+
