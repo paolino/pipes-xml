@@ -25,7 +25,8 @@ import qualified Data.ByteString.Char8 as B
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Pipes
-import Protolude
+import Protolude hiding (yield, toS)
+import Protolude.Conv
 
 -- | xml tokens
 data Token

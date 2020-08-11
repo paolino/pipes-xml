@@ -20,7 +20,7 @@ import Control.Monad.Cont
 import Data.Map (insert)
 import Pipes
 import Pipes.XML.Token
-import Protolude
+import Protolude hiding (yield)
 
 -- | a pipe which breaks, and return the breaking token
 breakP :: Functor m => (a -> Bool) -> Pipe a a m a
